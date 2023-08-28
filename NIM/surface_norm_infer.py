@@ -131,38 +131,53 @@ def read_depth_img(filepath:str = None):
     Return:
         Torch.tensor
     """
-    depth = cv2.imread(filepath, cv2.IMREAD_ANYDEPTH).astype(np.float32) / 1000
-    depth = torch.tensor(depth)
-    return depth
+    depth_img = cv2.imread(filepath, cv2.IMREAD_ANYDEPTH).astype(np.float32) / 1000
+    depth_img = torch.tensor(depth_img)
+    return depth_img
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser("NIM Demo", parents=[get_base_parser()])
-    args = parser.parse_args()
-    
-    depth_filepath = os.path.join(args.depth)
+def process_depth(model=None, filepath=None, outpath=None, focal_len=None):
+    """ Process single depth image."""
+    depth_filepath = os.path.join(filepath)
     depth = read_depth_img(depth_filepath)
 
-    model = NIM()
-    
     calib = {
-        'focal': args.focal, # focal for x and y
-        'u': depth.shape[1] / 2, # principal pt x component (width/2)
-        'v': depth.shape[0] * 0.0, # principal pt y component (height/2)
+        'focal': focal_len,  # focal for x and y
+        'u': depth.shape[1] / 2,  # principal pt x component (width/2)
+        'v': depth.shape[0] * 0.0,  # principal pt y component (height/2)
     }
 
     normal = model(depth, calib, sign_filter=True)
     normal = normal.cpu().numpy()
 
     normal_vis = normal_visualization(normal)
-    
-    '''if not os.path.exists(os.path.join('examples', 'normal')):
-        os.makedirs(os.path.join('examples', 'normal'))
-    cv2.imwrite(os.path.join('examples', 'normal', example_name + '.png'), cv2.cvtColor(
-        normal_vis.transpose([1, 2, 0])*255, cv2.COLOR_RGB2BGR))
-    '''
-    cv2.imwrite(
-        "out.png",
-        cv2.cvtColor(normal_vis.transpose([1, 2, 0])*255, cv2.COLOR_RGB2BGR)
-    )    
 
+    cv2.imwrite(
+        outpath,
+        cv2.cvtColor(normal_vis.transpose([1, 2, 0]) * 255, cv2.COLOR_RGB2BGR)
+    )
+
+
+def process_depth_folder(model=None, args=None):
+    """ Process depth images contained in some folder"""
+    files = os.listdir(args.folder)
+
+    for f in files:
+        filepath = os.path.join(args.folder, f)
+        outpath = os.path.join(args.outpath, f[:-4] + "-norms.png")
+
+        process_depth(model, filepath, outpath, args.focal)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser("NIM Demo", parents=[get_base_parser()])
+    args = parser.parse_args()
+
+    model = NIM()
+
+    if args.depth is not None and args.folder is not None:
+        raise Exception("--depth and --folder cannot be specified at the same time!")
+    elif args.depth is not None:
+        process_depth(model, args)
+    elif args.folder is not None:
+        process_depth_folder(model, args)
